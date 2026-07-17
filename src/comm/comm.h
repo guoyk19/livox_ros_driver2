@@ -161,6 +161,9 @@ typedef struct {
   float x;
   float y;
   float z;
+  float depth;
+  float theta;
+  float phi;
   float intensity;
   uint8_t tag;
   uint8_t line;

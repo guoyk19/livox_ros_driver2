@@ -426,6 +426,9 @@ void LidarPubHandler::ProcessSphericalPoint(RawPacket& pkt) {
     double radius = raw[i].depth / 1000.0;
     double theta = raw[i].theta / 100.0 / 180 * PI;
     double phi = raw[i].phi / 100.0 / 180 * PI;
+    point.depth = radius;
+    point.theta = theta;
+    point.phi = phi;
     double src_x = radius * sin(theta) * cos(phi);
     double src_y = radius * sin(theta) * sin(phi);
     double src_z = radius * cos(theta);

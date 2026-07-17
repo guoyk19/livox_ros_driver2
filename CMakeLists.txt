@@ -47,6 +47,8 @@ if(ROS_EDITION STREQUAL "ROS1")
   add_message_files(FILES
     CustomPoint.msg
     CustomMsg.msg
+    CustomSphericalPoint.msg
+    CustomSphericalMsg.msg
   #   Message2.msg
   )
 
@@ -241,6 +243,8 @@ else(ROS_EDITION STREQUAL "ROS2")
   rosidl_generate_interfaces(${LIVOX_INTERFACES}
     "msg/CustomPoint.msg"
     "msg/CustomMsg.msg"
+    "msg/CustomSphericalPoint.msg"
+    "msg/CustomSphericalMsg.msg"
     DEPENDENCIES builtin_interfaces std_msgs
     LIBRARY_NAME ${PROJECT_NAME}
   )

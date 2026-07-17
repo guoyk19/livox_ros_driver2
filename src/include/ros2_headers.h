@@ -36,6 +36,8 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include "livox_ros_driver2/msg/custom_point.hpp"
 #include "livox_ros_driver2/msg/custom_msg.hpp"
+#include "livox_ros_driver2/msg/custom_spherical_point.hpp"
+#include "livox_ros_driver2/msg/custom_spherical_msg.hpp"
 
 #define DRIVER_DEBUG(node, ...) RCLCPP_DEBUG((node).get_logger(), __VA_ARGS__)
 #define DRIVER_INFO(node, ...) RCLCPP_INFO((node).get_logger(), __VA_ARGS__)

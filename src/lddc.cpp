@@ -170,6 +170,8 @@ void Lddc::PollingLidarPointCloudData(uint8_t index, LidarDevice *lidar) {
       PublishPointcloud2(p_queue, index);
     } else if (kLivoxCustomMsg == transfer_format_) {
       PublishCustomPointcloud(p_queue, index);
+    } else if (kLivoxSphericalMsg == transfer_format_) {
+      PublishSphericalPointcloud(p_queue, index);
     } else if (kPclPxyziMsg == transfer_format_) {
       PublishPclMsg(p_queue, index);
     }
@@ -227,6 +229,22 @@ void Lddc::PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index) {
     InitCustomMsg(livox_msg, pkg, index);
     FillPointsToCustomMsg(livox_msg, pkg);
     PublishCustomPointData(livox_msg, index);
+  }
+}
+
+void Lddc::PublishSphericalPointcloud(LidarDataQueue *queue, uint8_t index) {
+  while (!QueueIsEmpty(queue)) {
+    StoragePacket pkg;
+    QueuePop(queue, &pkg);
+    if (pkg.points.empty()) {
+      printf("Publish spherical point cloud failed, the pkg points is empty.\n");
+      continue;
+    }
+
+    CustomSphericalMsg livox_msg;
+    InitSphericalMsg(livox_msg, pkg, index);
+    FillPointsToSphericalMsg(livox_msg, pkg);
+    PublishSphericalPointData(livox_msg, index);
   }
 }
 
@@ -416,6 +434,72 @@ void Lddc::PublishCustomPointData(const CustomMsg& livox_msg, const uint8_t inde
   }
 }
 
+void Lddc::InitSphericalMsg(CustomSphericalMsg& livox_msg,
+    const StoragePacket& pkg, uint8_t index) {
+  livox_msg.header.frame_id.assign(frame_id_);
+
+  uint64_t timestamp = 0;
+  if (!pkg.points.empty()) {
+    timestamp = pkg.base_time;
+  }
+  livox_msg.timebase = timestamp;
+
+#ifdef BUILDING_ROS1
+  static uint32_t msg_seq = 0;
+  livox_msg.header.seq = msg_seq++;
+  livox_msg.header.stamp = ros::Time(timestamp / 1000000000.0);
+#elif defined BUILDING_ROS2
+  livox_msg.header.stamp = rclcpp::Time(timestamp);
+#endif
+
+  livox_msg.point_num = pkg.points_num;
+  if (lds_->lidars_[index].lidar_type == kLivoxLidarType) {
+    livox_msg.lidar_id = lds_->lidars_[index].handle;
+  } else {
+    livox_msg.lidar_id = 0;
+  }
+}
+
+void Lddc::FillPointsToSphericalMsg(CustomSphericalMsg& livox_msg,
+    const StoragePacket& pkg) {
+  livox_msg.points.reserve(pkg.points_num);
+  for (uint32_t i = 0; i < pkg.points_num; ++i) {
+    const PointXyzlt& source = pkg.points[i];
+    CustomSphericalPoint point;
+    point.depth = source.depth;
+    point.theta = source.theta;
+    point.phi = source.phi;
+    point.reflectivity = source.intensity;
+    point.tag = source.tag;
+    point.line = source.line;
+    point.offset_time =
+        static_cast<uint32_t>(source.offset_time - pkg.base_time);
+    livox_msg.points.push_back(std::move(point));
+  }
+}
+
+void Lddc::PublishSphericalPointData(const CustomSphericalMsg& livox_msg,
+    const uint8_t index) {
+#ifdef BUILDING_ROS1
+  PublisherPtr publisher_ptr = Lddc::GetCurrentPublisher(index);
+#elif defined BUILDING_ROS2
+  Publisher<CustomSphericalMsg>::SharedPtr publisher_ptr =
+      std::dynamic_pointer_cast<Publisher<CustomSphericalMsg>>(
+          GetCurrentPublisher(index));
+#endif
+
+  if (kOutputToRos == output_type_) {
+    publisher_ptr->publish(livox_msg);
+  } else {
+#ifdef BUILDING_ROS1
+    if (bag_ && enable_lidar_bag_) {
+      bag_->write(publisher_ptr->getTopic(),
+          ros::Time(livox_msg.timebase / 1000000000.0), livox_msg);
+    }
+#endif
+  }
+}
+
 void Lddc::InitPclMsg(const StoragePacket& pkg, PointCloud& cloud, uint64_t& timestamp) {
 #ifdef BUILDING_ROS1
   cloud.header.frame_id.assign(frame_id_);
@@ -534,6 +618,11 @@ std::shared_ptr<rclcpp::PublisherBase> Lddc::CreatePublisher(uint8_t msg_type,
       DRIVER_INFO(*cur_node_,
           "%s publish use livox custom format", topic_name.c_str());
       return cur_node_->create_publisher<CustomMsg>(topic_name, queue_size);
+    } else if (kLivoxSphericalMsg == msg_type) {
+      DRIVER_INFO(*cur_node_,
+          "%s publish use livox spherical format", topic_name.c_str());
+      return cur_node_->create_publisher<CustomSphericalMsg>(topic_name,
+          queue_size);
     }
 #if 0
     else if (kPclPxyziMsg == msg_type)  {
@@ -592,6 +681,12 @@ PublisherPtr Lddc::GetCurrentPublisher(uint8_t index) {
                                                                 queue_size);
       DRIVER_INFO(*cur_node_,
           "%s publish use livox custom format, set ROS publisher queue size %d",
+          name_str, queue_size);
+    } else if (kLivoxSphericalMsg == transfer_format_) {
+      **pub = cur_node_->GetNode().advertise<livox_ros_driver2::CustomSphericalMsg>(
+          name_str, queue_size);
+      DRIVER_INFO(*cur_node_,
+          "%s publish use livox spherical format, set ROS publisher queue size %d",
           name_str, queue_size);
     } else if (kPclPxyziMsg == transfer_format_) {
       **pub = cur_node_->GetNode().advertise<PointCloud>(name_str, queue_size);

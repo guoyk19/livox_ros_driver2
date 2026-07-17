@@ -43,7 +43,8 @@ typedef enum {
   kPointCloud2Msg = 0,
   kLivoxCustomMsg = 1,
   kPclPxyziMsg = 2,
-  kLivoxImuMsg = 3,
+  kLivoxSphericalMsg = 3,
+  kLivoxImuMsg = 4,
 } TransferType;
 
 /** Type-Definitions based on ROS versions */
@@ -54,6 +55,8 @@ using PointCloud2 = sensor_msgs::PointCloud2;
 using PointField = sensor_msgs::PointField;
 using CustomMsg = livox_ros_driver2::CustomMsg;
 using CustomPoint = livox_ros_driver2::CustomPoint;
+using CustomSphericalMsg = livox_ros_driver2::CustomSphericalMsg;
+using CustomSphericalPoint = livox_ros_driver2::CustomSphericalPoint;
 using ImuMsg = sensor_msgs::Imu;
 #elif defined BUILDING_ROS2
 template <typename MessageT> using Publisher = rclcpp::Publisher<MessageT>;
@@ -62,6 +65,8 @@ using PointCloud2 = sensor_msgs::msg::PointCloud2;
 using PointField = sensor_msgs::msg::PointField;
 using CustomMsg = livox_ros_driver2::msg::CustomMsg;
 using CustomPoint = livox_ros_driver2::msg::CustomPoint;
+using CustomSphericalMsg = livox_ros_driver2::msg::CustomSphericalMsg;
+using CustomSphericalPoint = livox_ros_driver2::msg::CustomSphericalPoint;
 using ImuMsg = sensor_msgs::msg::Imu;
 #endif
 
@@ -102,6 +107,7 @@ class Lddc final {
 
   void PublishPointcloud2(LidarDataQueue *queue, uint8_t index);
   void PublishCustomPointcloud(LidarDataQueue *queue, uint8_t index);
+  void PublishSphericalPointcloud(LidarDataQueue *queue, uint8_t index);
   void PublishPclMsg(LidarDataQueue *queue, uint8_t index);
 
   void PublishImuData(LidarImuDataQueue& imu_data_queue, const uint8_t index);
@@ -113,6 +119,13 @@ class Lddc final {
   void InitCustomMsg(CustomMsg& livox_msg, const StoragePacket& pkg, uint8_t index);
   void FillPointsToCustomMsg(CustomMsg& livox_msg, const StoragePacket& pkg);
   void PublishCustomPointData(const CustomMsg& livox_msg, const uint8_t index);
+
+  void InitSphericalMsg(CustomSphericalMsg& livox_msg, const StoragePacket& pkg,
+      uint8_t index);
+  void FillPointsToSphericalMsg(CustomSphericalMsg& livox_msg,
+      const StoragePacket& pkg);
+  void PublishSphericalPointData(const CustomSphericalMsg& livox_msg,
+      const uint8_t index);
 
   void InitPclMsg(const StoragePacket& pkg, PointCloud& cloud, uint64_t& timestamp);
   void FillPointsToPclMsg(const StoragePacket& pkg, PointCloud& pcl_msg);
