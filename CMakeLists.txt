@@ -332,6 +332,11 @@ else(ROS_EDITION STREQUAL "ROS2")
     ament_lint_auto_find_test_dependencies()
   endif()
 
+  install(PROGRAMS
+    src/spherical_range_preprocessor.py
+    DESTINATION lib/${PROJECT_NAME}
+  )
+
   ament_auto_package(INSTALL_TO_SHARE
     config
     launch_ROS2
