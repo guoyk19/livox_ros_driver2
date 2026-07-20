@@ -48,7 +48,7 @@ def generate_launch_description():
         output='screen',
         arguments=[
             '--display-config',
-            os.path.join(config_dir, 'display_point_cloud_ROS2.rviz'),
+            os.path.join(config_dir, 'display_point_cloud_preprocessed_ROS2.rviz'),
         ],
     )
 
