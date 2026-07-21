@@ -72,7 +72,6 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Value: true
-  Enabled: true
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -103,6 +102,7 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: false
       Value: true
+  Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: livox_frame
@@ -164,4 +164,3 @@ Window Geometry:
   Width: 1853
   X: 67
   Y: 27
-
