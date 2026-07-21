@@ -30,13 +30,22 @@ class SphericalRangePreprocessor(Node):
         self.declare_parameter('valid_topic', '/livox/range_grid_valid')
         self.declare_parameter('raw_visualization_topic', '/livox/raw_points')
         self.declare_parameter('grid_visualization_topic', '/livox/range_grid_points')
+        self.declare_parameter('min_reflectivity', 0)
+        self.declare_parameter('max_tag_confidence', 1)
+        self.declare_parameter('publish_rviz_clouds', True)
         self.declare_parameter('max_range', 70.0)
-        self.declare_parameter('min_range', 0.10)
+        self.declare_parameter('min_range', 0.01)
         self.declare_parameter('pooling', 'min')  # min, median, or mean
         self.declare_parameter('publish_debug', False)
 
         self.max_range = float(self.get_parameter('max_range').value)
         self.min_range = float(self.get_parameter('min_range').value)
+        self.min_reflectivity = int(self.get_parameter('min_reflectivity').value)
+        self.max_tag_confidence = int(self.get_parameter('max_tag_confidence').value)
+        if not 0 <= self.min_reflectivity <= 255:
+            raise ValueError('min_reflectivity must be between 0 and 255')
+        if not 0 <= self.max_tag_confidence <= 2:
+            raise ValueError('max_tag_confidence must be between 0 and 2')
         self.pooling = str(self.get_parameter('pooling').value).lower()
         if self.pooling not in ('min', 'median', 'mean'):
             raise ValueError("pooling must be 'min', 'median', or 'mean'")
@@ -57,16 +66,21 @@ class SphericalRangePreprocessor(Node):
             Float32MultiArray, str(self.get_parameter('range_topic').value), 10)
         self.valid_pub = self.create_publisher(
             Float32MultiArray, str(self.get_parameter('valid_topic').value), 10)
-        self.raw_visualization_pub = self.create_publisher(
-            PointCloud2, str(self.get_parameter('raw_visualization_topic').value), 10)
-        self.grid_visualization_pub = self.create_publisher(
-            PointCloud2, str(self.get_parameter('grid_visualization_topic').value), 10)
+        self.publish_rviz_clouds = bool(self.get_parameter('publish_rviz_clouds').value)
+        self.raw_visualization_pub = None
+        self.grid_visualization_pub = None
+        if self.publish_rviz_clouds:
+            self.raw_visualization_pub = self.create_publisher(
+                PointCloud2, str(self.get_parameter('raw_visualization_topic').value), 10)
+            self.grid_visualization_pub = self.create_publisher(
+                PointCloud2, str(self.get_parameter('grid_visualization_topic').value), 10)
         self.subscription = self.create_subscription(
             CustomSphericalMsg, input_topic, self.cloud_callback, qos)
 
         self.get_logger().info(
             f'Listening to {input_topic}; output grid is '
-            f'{self.n_theta} theta x {self.n_phi} phi, pooling={self.pooling}')
+            f'{self.n_theta} theta x {self.n_phi} phi, pooling={self.pooling}, '
+            f'rviz_clouds={self.publish_rviz_clouds}')
 
     def _cell_index(self, theta_rad, phi_rad):
         theta = math.degrees(theta_rad)
@@ -99,14 +113,18 @@ class SphericalRangePreprocessor(Node):
             phi = float(point.phi)
 
             # MID-360 spherical data uses depth=0 for invalid/no-return
-            # samples.  Also reject NaN/Inf, out-of-range data, and points
-            # outside the requested angular sector.  Reflectivity is not
-            # used as a validity test because a valid dark target may have 0.
+            # samples.  Reject malformed, out-of-range, low-reflectivity,
+            # and low-confidence tag samples before angular pooling.
             if not math.isfinite(depth) or not math.isfinite(theta) or not math.isfinite(phi):
                 continue
             if depth < self.min_range or depth > self.max_range:
                 continue
-            raw_xyz.append(self._to_xyz(depth, theta, phi))
+            if int(point.reflectivity) < self.min_reflectivity:
+                continue
+            if not self._tag_is_acceptable(int(point.tag)):
+                continue
+            if self.publish_rviz_clouds:
+                raw_xyz.append(self._to_xyz(depth, theta, phi))
             index = self._cell_index(theta, phi)
             if index is None:
                 continue
@@ -131,24 +149,34 @@ class SphericalRangePreprocessor(Node):
 
         self.range_pub.publish(self._make_array(ranges))
         self.valid_pub.publish(self._make_array(valid))
-        self.raw_visualization_pub.publish(
-            point_cloud2.create_cloud_xyz32(msg.header, raw_xyz))
-        grid_xyz = [
-            self._to_xyz(
-                ranges[index],
-                math.radians(self.theta_deg[index // self.n_phi]),
-                math.radians(self.phi_deg[index % self.n_phi]),
-            )
-            for index in range(self.cell_count) if valid[index] > 0.5
-        ]
-        self.grid_visualization_pub.publish(
-            point_cloud2.create_cloud_xyz32(msg.header, grid_xyz))
+        if self.publish_rviz_clouds:
+            self.raw_visualization_pub.publish(
+                point_cloud2.create_cloud_xyz32(msg.header, raw_xyz))
+            grid_xyz = [
+                self._to_xyz(
+                    ranges[index],
+                    math.radians(self.theta_deg[index // self.n_phi]),
+                    math.radians(self.phi_deg[index % self.n_phi]),
+                )
+                for index in range(self.cell_count) if valid[index] > 0.5
+            ]
+            self.grid_visualization_pub.publish(
+                point_cloud2.create_cloud_xyz32(msg.header, grid_xyz))
 
         if self.get_parameter('publish_debug').value:
             filled = sum(1 for item in valid if item > 0.5)
             self.get_logger().debug(
                 f'points={len(msg.points)}, accepted={accepted}, '
                 f'filled_cells={filled}/{self.cell_count}')
+
+    def _tag_is_acceptable(self, tag):
+        """Accept normal/medium confidence tags; reject poor/reserved tags."""
+        # Bits [1:0], [3:2], and [5:4] are three independent confidence
+        # fields.  Bits [7:6] are reserved and must remain zero.
+        if tag & 0xC0:
+            return False
+        confidence_fields = ((tag >> 0) & 0x03, (tag >> 2) & 0x03, (tag >> 4) & 0x03)
+        return max(confidence_fields) <= self.max_tag_confidence
 
     @staticmethod
     def _to_xyz(depth, theta, phi):
